@@ -18,6 +18,7 @@ model User {
   lastName      String
   role          UserRole  @default(CUSTOMER)
   phoneNumber   String?
+  profilePhoto  String?   // URL to the profile photo
   isVerified    Boolean   @default(false)
   verificationToken String?
   resetToken String?

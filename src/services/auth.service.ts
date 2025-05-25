@@ -19,6 +19,7 @@ export class AuthService {
         firstName: string;
         lastName: string;
         phoneNumber?: string;
+        profilePhoto?: string;
     }): Promise<{
         user: Omit<User, "password">;
         tokens: { accessToken: string; refreshToken: string };

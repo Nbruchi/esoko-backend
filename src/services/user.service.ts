@@ -30,6 +30,7 @@ export class UserService {
             firstName?: string;
             lastName?: string;
             phoneNumber?: string | null;
+            profilePhoto?: string;
             notificationPreferences?: {
                 emailNotifications?: boolean;
                 smsNotifications?: boolean;
