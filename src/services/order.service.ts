@@ -56,7 +56,7 @@ export class OrderService {
 
             // 2. Create payment inte if using stripe
             let paymentIntentId = null;
-            if (data.paymentMethod === "STRIPE") {
+            if (data.paymentMethod === "CARD") {
                 const paymentIntent = await stripe.paymentIntents.create({
                     amount: Math.round(totalAmount * 100),
                     currency: "rwf",

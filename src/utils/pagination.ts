@@ -7,6 +7,7 @@ export interface PaginatedRsponse<T> {
     data: T[];
     total: number;
     page: number;
+    limit: number;
     totalPages: number;
     hasNextPage: boolean;
     hasPreviousPage: boolean;
@@ -38,6 +39,7 @@ export const paginate = async <T>(
         data,
         total,
         page,
+        limit,
         totalPages,
         hasNextPage: page < totalPages,
         hasPreviousPage: page > 1,

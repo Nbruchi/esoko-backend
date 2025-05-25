@@ -13,12 +13,22 @@ export class ProductService {
         sellerId: string;
         images: string[];
     }): Promise<Product> {
+        // Check if seller exists and is verified
+        const seller = await prisma.seller.findUnique({
+            where: { id: data.sellerId },
+        });
+        if (!seller) {
+            throw new Error("Seller not found");
+        }
+        if (!seller.isVerified) {
+            throw new Error("Seller is not verified");
+        }
         return prisma.product.create({ data });
     }
 
     // Get product by id
-    async getProductById(id: string): Promise<Product | null> {
-        return prisma.product.findUnique({
+    async getProductById(id: string): Promise<Product> {
+        const product = await prisma.product.findUnique({
             where: { id },
             include: {
                 category: true,
@@ -26,6 +36,10 @@ export class ProductService {
                 reviews: true,
             },
         });
+        if (!product) {
+            throw new Error("Product not found");
+        }
+        return product;
     }
 
     // Get all products with pagination and filters
@@ -91,6 +105,12 @@ export class ProductService {
             isActive?: boolean;
         }
     ): Promise<Product> {
+        const product = await prisma.product.findUnique({
+            where: { id },
+        });
+        if (!product) {
+            throw new Error("Product not found");
+        }
         return prisma.product.update({
             where: {
                 id,
@@ -102,6 +122,12 @@ export class ProductService {
 
     // Soft delete product
     async softDeleteProduct(id: string, sellerId: string): Promise<Product> {
+        const product = await prisma.product.findUnique({
+            where: { id },
+        });
+        if (!product) {
+            throw new Error("Product not found");
+        }
         return prisma.product.update({
             where: {
                 id,

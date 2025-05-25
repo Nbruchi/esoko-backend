@@ -9,6 +9,14 @@ export class SellerService {
         description?: string;
         logo?: string;
     }): Promise<Seller> {
+        // Check if user exists
+        const user = await prisma.user.findUnique({
+            where: { id: data.userId },
+        });
+        if (!user) {
+            throw new Error("User not found");
+        }
+
         // Check if user already has a seller profile
         const existing = await prisma.seller.findUnique({
             where: { userId: data.userId },
@@ -20,8 +28,12 @@ export class SellerService {
     }
 
     // Get seller profile by seller id
-    async getSellerById(id: string): Promise<Seller | null> {
-        return prisma.seller.findUnique({ where: { id } });
+    async getSellerById(id: string): Promise<Seller> {
+        const seller = await prisma.seller.findUnique({ where: { id } });
+        if (!seller) {
+            throw new Error("Seller not found");
+        }
+        return seller;
     }
 
     // Get seller profile by user id
