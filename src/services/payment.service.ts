@@ -1,6 +1,6 @@
 import { prisma } from "@/config/database";
 import { PaymentMethod, PaymentStatus } from "@prisma/client";
-import { stripe } from "@/config/stripe";
+import { stripe, STRIPE_CONFIG } from "@/config/stripe";
 
 export class PaymentService {
     async createPayment(
@@ -14,6 +14,18 @@ export class PaymentService {
 
         if (!order) {
             throw new Error("Order not found");
+        }
+
+        // Validate amount against configured limits
+        if (amount < STRIPE_CONFIG.minimumAmount) {
+            throw new Error(
+                `Amount must be at least ${STRIPE_CONFIG.minimumAmount} ${STRIPE_CONFIG.currency}`
+            );
+        }
+        if (amount > STRIPE_CONFIG.maximumAmount) {
+            throw new Error(
+                `Amount cannot exceed ${STRIPE_CONFIG.maximumAmount} ${STRIPE_CONFIG.currency}`
+            );
         }
 
         switch (method) {
@@ -30,7 +42,7 @@ export class PaymentService {
         // Create Stripe payment intent
         const paymentIntent = await stripe.paymentIntents.create({
             amount: Math.round(amount * 100),
-            currency: "rwf",
+            currency: STRIPE_CONFIG.currency,
         });
 
         return {
