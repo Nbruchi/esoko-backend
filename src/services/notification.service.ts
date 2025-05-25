@@ -3,9 +3,18 @@ import { getIO } from "@/config/socket";
 import { paginate, PaginationParams } from "@/utils/pagination";
 import { Notification, NotificationType, User } from "@prisma/client";
 
-const io = getIO();
-
 export class NotificationService {
+    private getSocketIO() {
+        try {
+            return getIO();
+        } catch (error) {
+            console.warn(
+                "Socket.IO not initialized, notifications will not be sent in real-time"
+            );
+            return null;
+        }
+    }
+
     //Create notification
     async createNotification(data: {
         userId: string;
@@ -22,8 +31,11 @@ export class NotificationService {
             },
         });
 
-        // Emit real-time notification
-        io.to(data.userId).emit("notification", notification);
+        // Emit real-time notification if Socket.IO is available
+        const io = this.getSocketIO();
+        if (io) {
+            io.to(data.userId).emit("notification", notification);
+        }
 
         return notification;
     }
@@ -112,10 +124,13 @@ export class NotificationService {
             take: notifications.length,
         });
 
-        //Emit real-time notifications
-        createdNotifications.forEach((notification) => {
-            io.to(notification.userId).emit("notification", notification);
-        });
+        //Emit real-time notifications if Socket.IO is available
+        const io = this.getSocketIO();
+        if (io) {
+            createdNotifications.forEach((notification) => {
+                io.to(notification.userId).emit("notification", notification);
+            });
+        }
 
         return createdNotifications;
     }
@@ -263,13 +278,16 @@ export class NotificationService {
         });
 
         // Emit real-time notification with priority
-        io.to(data.userId).emit("notification", {
-            ...notification,
-            metadata: {
-                ...((notification.metadata as Record<string, any>) || {}),
-                priority: data.priority,
-            },
-        });
+        const io = this.getSocketIO();
+        if (io) {
+            io.to(data.userId).emit("notification", {
+                ...notification,
+                metadata: {
+                    ...((notification.metadata as Record<string, any>) || {}),
+                    priority: data.priority,
+                },
+            });
+        }
 
         return notification;
     }

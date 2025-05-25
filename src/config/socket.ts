@@ -15,9 +15,13 @@ interface ClientToServerEvents {
     leave: (userId: string) => void;
 }
 
-let io: Server<ClientToServerEvents, ServerToClientEvents>;
+let io: Server<ClientToServerEvents, ServerToClientEvents> | null = null;
 
 export const initializeSocket = (httpServer: HttpServer) => {
+    if (io) {
+        return io;
+    }
+
     io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
         cors: {
             origin: process.env.FRONTEND_URL,
