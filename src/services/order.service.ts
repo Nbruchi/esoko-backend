@@ -324,4 +324,108 @@ export class OrderService {
             totalSpent: totalSpent._sum.totalAmount || 0,
         };
     }
+
+    async getSalesTrendAnalytics(timeRange: "day" | "week" | "month" | "year") {
+        const startDate = new Date();
+        switch (timeRange) {
+            case "day":
+                startDate.setDate(startDate.getDate() - 1);
+                break;
+            case "week":
+                startDate.setDate(startDate.getDate() - 7);
+                break;
+            case "month":
+                startDate.setMonth(startDate.getMonth() - 1);
+                break;
+            case "year":
+                startDate.setFullYear(startDate.getFullYear() - 1);
+                break;
+        }
+
+        const [hourlySales, categorySales, averageOrderValue] =
+            await Promise.all([
+                prisma.order.groupBy({
+                    by: ["createdAt"],
+                    where: {
+                        createdAt: { gte: startDate },
+                        status: OrderStatus.DELIVERED,
+                    },
+                    _sum: { totalAmount: true },
+                }),
+                prisma.orderItem.groupBy({
+                    by: ["productId"],
+                    where: {
+                        order: {
+                            createdAt: { gte: startDate },
+                            status: OrderStatus.DELIVERED,
+                        },
+                    },
+                    _sum: { quantity: true },
+                }),
+                prisma.order.aggregate({
+                    where: {
+                        createdAt: { gte: startDate },
+                        status: OrderStatus.DELIVERED,
+                    },
+                    _avg: { totalAmount: true },
+                }),
+            ]);
+
+        return {
+            hourlySales,
+            categorySales,
+            averageOrderValue: averageOrderValue._avg.totalAmount || 0,
+        };
+    }
+
+    async getMarketingAnalytics(timeRange: "day" | "week" | "month" | "year") {
+        const startDate = new Date();
+        switch (timeRange) {
+            case "day":
+                startDate.setDate(startDate.getDate() - 1);
+                break;
+            case "week":
+                startDate.setDate(startDate.getDate() - 7);
+                break;
+            case "month":
+                startDate.setMonth(startDate.getMonth() - 1);
+                break;
+            case "year":
+                startDate.setFullYear(startDate.getFullYear() - 1);
+                break;
+        }
+
+        const [newCustomers, repeatCustomers, customerRetention] =
+            await Promise.all([
+                prisma.user.count({
+                    where: {
+                        createdAt: { gte: startDate },
+                    },
+                }),
+                prisma.order.groupBy({
+                    by: ["userId"],
+                    where: {
+                        createdAt: { gte: startDate },
+                    },
+                    having: {
+                        userId: {
+                            _count: { gt: 1 },
+                        },
+                    },
+                }),
+                prisma.order.groupBy({
+                    by: ["userId"],
+                    where: {
+                        createdAt: { gte: startDate },
+                    },
+                }),
+            ]);
+
+        return {
+            newCustomers,
+            repeatCustomers: repeatCustomers.length,
+            customerRetention:
+                (repeatCustomers.length / customerRetention.length) * 100,
+        };
+    }
 }

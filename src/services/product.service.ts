@@ -458,4 +458,43 @@ export class ProductService {
             },
         });
     }
+
+    async getInventoryAnalytics(sellerId: string) {
+        const [lowStock, fastMoving, slowMoving] = await Promise.all([
+            prisma.product.findMany({
+                where: {
+                    sellerId,
+                    stock: { lte: 10 },
+                    isActive: true,
+                },
+            }),
+            prisma.product.findMany({
+                where: {
+                    sellerId,
+                    isActive: true,
+                },
+                orderBy: {
+                    orderItems: {
+                        _count: "desc",
+                    },
+                },
+                take: 5,
+            }),
+            prisma.product.findMany({
+                where: {
+                    sellerId,
+                    isActive: true,
+                    orderItems: {
+                        none: {},
+                    },
+                },
+            }),
+        ]);
+
+        return {
+            lowStock,
+            fastMoving,
+            slowMoving,
+        };
+    }
 }

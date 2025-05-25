@@ -341,4 +341,28 @@ export class UserService {
             data: { settings },
         });
     }
+
+    async getUserBehaviorAnalytics(userId: string) {
+        const [lastLogin, wishlistCount, cartItems, searchHistory] =
+            await Promise.all([
+                prisma.user.findUnique({
+                    where: { id: userId },
+                    select: { lastLogin: true },
+                }),
+                prisma.wishlist.count({ where: { userId } }),
+                prisma.cart.count({ where: { userId } }),
+                prisma.searchHistory.findMany({
+                    where: { userId },
+                    orderBy: { createdAt: "desc" },
+                    take: 10,
+                }),
+            ]);
+
+        return {
+            lastLogin: lastLogin?.lastLogin,
+            wishlistCount,
+            cartItems,
+            recentSearches: searchHistory,
+        };
+    }
 }

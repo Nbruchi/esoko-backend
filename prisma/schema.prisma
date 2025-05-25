@@ -19,6 +19,9 @@ model User {
   role          UserRole  @default(CUSTOMER)
   phoneNumber   String?
   isVerified    Boolean   @default(false)
+  verificationToken String?
+  resetToken String?
+  resetTokenExpiry DateTime?
   notificationPreferences Json?    @default("{\"emailNotifications\":true,\"smsNotifications\":true,\"orderUpdates\":true,\"promotions\":true}")
   settings      Json?     @default("{\"language\":\"en\",\"currency\":\"RWF\",\"theme\":\"light\",\"timezone\":\"UTC\"}")
   createdAt     DateTime  @default(now())
@@ -30,6 +33,9 @@ model User {
   notifications Notification[]
   refundRequests RefundRequest[]
   wishlist      Wishlist[]
+  lastLogin     DateTime?
+  cart          Cart[]
+  searchHistory SearchHistory[]
 }
 
 model Address {
@@ -64,6 +70,7 @@ model Product {
   orderItems  OrderItem[]
   reviews     Review[]
   wishlist    Wishlist[]
+  cart        Cart[]
 }
 
 model Category {
@@ -87,6 +94,7 @@ model Order {
   totalAmount     Float
   paymentStatus   PaymentStatus @default(PENDING)
   paymentMethod   PaymentMethod
+  paymentIntentId String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   user            User          @relation(fields: [userId], references: [id])
@@ -175,6 +183,27 @@ model Wishlist {
   @@unique([userId, productId])
 }
 
+model Cart {
+  id        String   @id @default(uuid())
+  userId    String
+  productId String
+  quantity  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@unique([userId, productId])
+}
+
+model SearchHistory {
+  id        String   @id @default(uuid())
+  userId    String
+  query     String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
 enum UserRole {
   ADMIN
   SELLER
@@ -197,8 +226,8 @@ enum PaymentStatus {
 }
 
 enum PaymentMethod {
-  STRIPE
-  MOBILE_MONEY
+  CARD
+  CASH_ON_DELIVERY
 }
 
 enum NotificationType {
