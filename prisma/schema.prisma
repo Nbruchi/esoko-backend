@@ -135,6 +135,7 @@ model Notification {
   userId    String
   type      NotificationType
   message   String
+  metadata  Json?
   isRead    Boolean         @default(false)
   createdAt DateTime        @default(now())
   user      User            @relation(fields: [userId], references: [id])
