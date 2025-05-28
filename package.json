@@ -16,10 +16,10 @@
         "test:ci": "jest --ci --coverage --runInBand",
         "lint": "eslint . --ext .ts",
         "format": "prettier --write \"src/**/*.ts\"",
-        "stripe:listen": "stripe listen --forward-to localhost:5173/api/webhooks",
+        "stripe:listen": "stripe listen --forward-to localhost:3000/api/webhooks",
         "stripe:events": "stripe events list",
         "stripe:login": "stripe login",
-        "stripe:test": "stripe listen --forward-to localhost:5173/api/webhooks --events payment_intent.succeeded,payment_intent.payment_failed,charge.refunded"
+        "stripe:test": "stripe listen --forward-to localhost:3000/api/webhooks --events payment_intent.succeeded,payment_intent.payment_failed,charge.refunded"
     },
     "dependencies": {
         "@prisma/client": "^5.10.0",

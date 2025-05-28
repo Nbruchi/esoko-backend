@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { AuthService } from "@/services/auth.service";
 import { z } from "zod";
+import { UserRole } from "@prisma/client";
 
 export class AuthController {
     private authService: AuthService;
@@ -12,9 +13,28 @@ export class AuthController {
     //Register new user
     async register(req: Request, res: Response) {
         try {
-            const user = await this.authService.register(req.body);
+            // Validate request body
+            const schema = z.object({
+                email: z.string().email(),
+                password: z.string().min(8),
+                firstName: z.string().min(2),
+                lastName: z.string().min(2),
+                phoneNumber: z.string().optional(),
+                role: z
+                    .enum(["CUSTOMER", "SELLER", "ADMIN"] as const)
+                    .optional(),
+            });
+
+            const validatedData = schema.parse(req.body);
+            const user = await this.authService.register(validatedData);
             res.status(201).json(user);
         } catch (error) {
+            if (error instanceof z.ZodError) {
+                return res.status(400).json({
+                    message: "Validation error",
+                    errors: error.errors,
+                });
+            }
             res.status(400).json({ message: (error as Error).message });
         }
     }
@@ -77,11 +97,11 @@ export class AuthController {
             const userId = req.user?.userId;
             const { currentPassword, newPassword } = req.body;
 
-             if (!userId) {
-                 return res
-                     .status(401)
-                     .json({ message: "User not authenticated" });
-             }
+            if (!userId) {
+                return res
+                    .status(401)
+                    .json({ message: "User not authenticated" });
+            }
 
             await this.authService.changePassword(
                 userId,
@@ -101,18 +121,19 @@ export class AuthController {
         try {
             const userId = req.user?.userId;
 
-             if (!userId) {
-                 return res
-                     .status(401)
-                     .json({ message: "User not authenticated" });
-             }
+            if (!userId) {
+                return res
+                    .status(401)
+                    .json({ message: "User not authenticated" });
+            }
 
             await this.authService.logout(userId);
             res.json({ message: "Logged out successfully" });
         } catch (error) {
-res.status(400).json({
-    message: (error as Error).message,
-});        }
+            res.status(400).json({
+                message: (error as Error).message,
+            });
+        }
     }
 
     // Get current user
@@ -120,17 +141,18 @@ res.status(400).json({
         try {
             const userId = req.user?.userId;
 
-             if (!userId) {
-                 return res
-                     .status(401)
-                     .json({ message: "User not authenticated" });
-             }
+            if (!userId) {
+                return res
+                    .status(401)
+                    .json({ message: "User not authenticated" });
+            }
 
             const user = await this.authService.getCurrentUser(userId);
             res.json(user);
         } catch (error) {
-res.status(400).json({
-    message: (error as Error).message,
-});        }
+            res.status(400).json({
+                message: (error as Error).message,
+            });
+        }
     }
 }

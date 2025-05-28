@@ -45,7 +45,7 @@ const swaggerOptions = {
         },
         servers: [
             {
-                url: process.env.DEV_API_URL || "http://localhost:5173",
+                url: process.env.DEV_API_URL || "http://localhost:3000",
                 description: "Development server",
             },
             {
@@ -98,11 +98,17 @@ const initializeServices = async () => {
 // Middleware
 app.use(
     cors({
-        origin: process.env.CORS_ORIGIN || "*",
+        origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+        methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+        allowedHeaders: ["Content-Type", "Authorization"],
         credentials: true,
     })
 );
-app.use(helmet());
+app.use(
+    helmet({
+        crossOriginResourcePolicy: { policy: "cross-origin" },
+    })
+);
 app.use(morgan("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

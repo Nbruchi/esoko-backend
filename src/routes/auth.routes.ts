@@ -38,7 +38,7 @@ const authController = new AuthController();
  *       400:
  *         description: Invalid input data
  */
-router.post("/register", authController.register);
+router.post("/register", authController.register.bind(authController));
 
 /**
  * @swagger
@@ -74,7 +74,7 @@ router.post("/register", authController.register);
  *       401:
  *         description: Invalid credentials
  */
-router.post("/login", authController.login);
+router.post("/login", authController.login.bind(authController));
 
 /**
  * @swagger
@@ -99,7 +99,7 @@ router.post("/login", authController.login);
  *       400:
  *         description: Invalid or expired token
  */
-router.post("/verify-email", authController.verifyEmail);
+router.post("/verify-email", authController.verifyEmail.bind(authController));
 
 /**
  * @swagger
@@ -125,7 +125,10 @@ router.post("/verify-email", authController.verifyEmail);
  *       404:
  *         description: User not found
  */
-router.post("/forgot-password", authController.requestPasswordReset);
+router.post(
+    "/forgot-password",
+    authController.requestPasswordReset.bind(authController)
+);
 
 /**
  * @swagger
@@ -154,7 +157,10 @@ router.post("/forgot-password", authController.requestPasswordReset);
  *       400:
  *         description: Invalid or expired token
  */
-router.post("/reset-password", authController.resetPassword);
+router.post(
+    "/reset-password",
+    authController.resetPassword.bind(authController)
+);
 
 /**
  * @swagger
@@ -168,7 +174,7 @@ router.post("/reset-password", authController.resetPassword);
  *       200:
  *         description: Logout successful
  */
-router.post("/logout", authController.logout);
+router.post("/logout", authController.logout.bind(authController));
 
 /**
  * @swagger
@@ -201,7 +207,10 @@ router.post("/logout", authController.logout);
  *       400:
  *         description: Invalid input
  */
-router.post("/change-password", authController.changePassword);
+router.post(
+    "/change-password",
+    authController.changePassword.bind(authController)
+);
 
 /**
  * @swagger
@@ -232,6 +241,6 @@ router.post("/change-password", authController.changePassword);
  *       401:
  *         description: Unauthorized
  */
-router.get("/me", authController.getCurrentUser);
+router.get("/me", authController.getCurrentUser.bind(authController));
 
 export default router;

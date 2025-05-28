@@ -1,4 +1,4 @@
-import { PrismaClient, User } from "@prisma/client";
+import { User, UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { generateTokens } from "@/config/jwt";
 import { prisma } from "@/config/database";
@@ -20,6 +20,7 @@ export class AuthService {
         lastName: string;
         phoneNumber?: string;
         profilePhoto?: string;
+        role?: UserRole;
     }): Promise<{
         user: Omit<User, "password">;
         tokens: { accessToken: string; refreshToken: string };
@@ -38,13 +39,14 @@ export class AuthService {
         // Generate verification token
         const verificationToken = crypto.randomBytes(32).toString("hex");
 
-        // Create user
+        // Create user with role (defaults to CUSTOMER if not specified)
         const user = await prisma.user.create({
             data: {
                 ...userData,
                 password: hashedPassword,
                 verificationToken,
                 isVerified: false,
+                role: userData.role || "CUSTOMER",
             },
         });
 
