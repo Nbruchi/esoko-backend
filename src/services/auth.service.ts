@@ -23,14 +23,18 @@ export class AuthService {
         role?: UserRole;
     }): Promise<{
         user: Omit<User, "password">;
-        tokens: { accessToken: string; refreshToken: string };
+        tokens: {
+            accessToken: string;
+            refreshToken: string;
+            expiresAt: number;
+        };
     }> {
         const existingUser = await prisma.user.findUnique({
             where: { email: userData.email },
         });
 
         if (existingUser) {
-            throw new Error("User already exists");
+            throw new Error("Email already exists");
         }
 
         // Hash password
@@ -56,12 +60,8 @@ export class AuthService {
             verificationToken
         );
 
-        //Generate token
-        const tokens = generateTokens({
-            userId: user.id,
-            email: user.email,
-            role: user.role,
-        });
+        // Generate tokens
+        const tokens = await this.generateAndStoreTokens(user);
 
         // Remove password from user object
         const { password, ...userWithoutPassword } = user;
@@ -71,12 +71,17 @@ export class AuthService {
     // Login user
     async login(
         email: string,
-        password: string
+        password: string,
+        rememberMe?: boolean
     ): Promise<{
         user: Omit<User, "password">;
-        tokens: { accessToken: string; refreshToken: string };
+        tokens: {
+            accessToken: string;
+            refreshToken: string;
+            expiresAt: number;
+        };
     }> {
-        //Find user
+        // Find user
         const user = await prisma.user.findUnique({
             where: { email },
         });
@@ -85,23 +90,94 @@ export class AuthService {
             throw new Error("Invalid credentials");
         }
 
-        //Verify password
+        // Verify password
         const isValidPassword = await bcrypt.compare(password, user.password);
         if (!isValidPassword) {
             throw new Error("Invalid credentials");
         }
 
-        // Generate tokens
-        const tokens = generateTokens({
-            userId: user.id,
-            email: user.email,
-            role: user.role,
+        // Update last login
+        await prisma.user.update({
+            where: { id: user.id },
+            data: { lastLogin: new Date() },
         });
+
+        // Generate tokens
+        const tokens = await this.generateAndStoreTokens(user, rememberMe);
 
         // Remove password from user object
         const { password: _, ...userWithoutPassword } = user;
 
         return { user: userWithoutPassword, tokens };
+    }
+
+    // Refresh token
+    async refreshToken(token: string): Promise<{
+        accessToken: string;
+        refreshToken: string;
+        expiresAt: number;
+    }> {
+        // Find refresh token
+        const refreshToken = await prisma.refreshToken.findUnique({
+            where: { token },
+            include: { user: true },
+        });
+
+        if (!refreshToken || refreshToken.expiresAt < new Date()) {
+            throw new Error("Invalid or expired refresh token");
+        }
+
+        // Generate new tokens
+        const tokens = await this.generateAndStoreTokens(refreshToken.user);
+
+        // Delete old refresh token
+        await prisma.refreshToken.delete({
+            where: { id: refreshToken.id },
+        });
+
+        return tokens;
+    }
+
+    // Logout
+    async logout(userId: string): Promise<void> {
+        // Delete all refresh tokens for the user
+        await prisma.refreshToken.deleteMany({
+            where: { userId },
+        });
+    }
+
+    // Private helper to generate and store tokens
+    private async generateAndStoreTokens(
+        user: User,
+        rememberMe?: boolean
+    ): Promise<{
+        accessToken: string;
+        refreshToken: string;
+        expiresAt: number;
+    }> {
+        const payload = {
+            userId: user.id,
+            email: user.email,
+            role: user.role,
+        };
+
+        const { accessToken, refreshToken } = generateTokens(payload);
+
+        // Calculate expiration (15 minutes for access token)
+        const expiresAt = Date.now() + 15 * 60 * 1000;
+
+        // Store refresh token
+        await prisma.refreshToken.create({
+            data: {
+                token: refreshToken,
+                userId: user.id,
+                expiresAt: new Date(
+                    Date.now() + (rememberMe ? 30 : 7) * 24 * 60 * 60 * 1000
+                ), // 30 days if remember me, 7 days otherwise
+            },
+        });
+
+        return { accessToken, refreshToken, expiresAt };
     }
 
     // Verify email
@@ -201,14 +277,6 @@ export class AuthService {
         await prisma.user.update({
             where: { id: userId },
             data: { password: hashedPassword },
-        });
-    }
-
-    async logout(userId: string): Promise<void> {
-        // Update last login timestamp
-        await prisma.user.update({
-            where: { id: userId },
-            data: { lastLogin: new Date() },
         });
     }
 

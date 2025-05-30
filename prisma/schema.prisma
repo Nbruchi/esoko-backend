@@ -37,6 +37,7 @@ model User {
   lastLogin     DateTime?
   cart          Cart[]
   searchHistory SearchHistory[]
+  refreshTokens RefreshToken[]
 }
 
 model Address {
@@ -203,6 +204,17 @@ model SearchHistory {
   query     String
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 enum UserRole {

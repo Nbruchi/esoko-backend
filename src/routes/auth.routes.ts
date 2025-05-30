@@ -243,4 +243,40 @@ router.post(
  */
 router.get("/me", authController.getCurrentUser.bind(authController));
 
+/**
+ * @swagger
+ * /api/auth/refresh:
+ *   post:
+ *     tags: [Authentication]
+ *     summary: Refresh access token
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - refreshToken
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Token refreshed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 accessToken:
+ *                   type: string
+ *                 refreshToken:
+ *                   type: string
+ *                 expiresAt:
+ *                   type: number
+ *       400:
+ *         description: Invalid refresh token
+ */
+router.post("/refresh", authController.refreshToken.bind(authController));
+
 export default router;

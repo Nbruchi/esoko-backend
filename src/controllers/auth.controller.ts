@@ -15,10 +15,20 @@ export class AuthController {
         try {
             // Validate request body
             const schema = z.object({
-                email: z.string().email(),
-                password: z.string().min(8),
-                firstName: z.string().min(2),
-                lastName: z.string().min(2),
+                email: z.string().email("Invalid email address"),
+                password: z
+                    .string()
+                    .min(8, "Password must be at least 8 characters")
+                    .regex(
+                        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
+                        "Password must contain at least one uppercase letter, one lowercase letter, one number and one special character"
+                    ),
+                firstName: z
+                    .string()
+                    .min(2, "First name must be at least 2 characters"),
+                lastName: z
+                    .string()
+                    .min(2, "Last name must be at least 2 characters"),
                 phoneNumber: z.string().optional(),
                 role: z
                     .enum(["CUSTOMER", "SELLER", "ADMIN"] as const)
@@ -26,8 +36,76 @@ export class AuthController {
             });
 
             const validatedData = schema.parse(req.body);
-            const user = await this.authService.register(validatedData);
-            res.status(201).json(user);
+            const result = await this.authService.register(validatedData);
+            res.status(201).json({
+                success: true,
+                data: result,
+            });
+        } catch (error) {
+            if (error instanceof z.ZodError) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Validation error",
+                    errors: error.errors.map((err) => ({
+                        path: err.path,
+                        message: err.message,
+                    })),
+                });
+            }
+            res.status(400).json({
+                success: false,
+                error: (error as Error).message,
+            });
+        }
+    }
+
+    //Login user
+    async login(req: Request, res: Response) {
+        try {
+            const schema = z.object({
+                email: z.string().email(),
+                password: z.string(),
+                rememberMe: z.boolean().optional(),
+            });
+
+            const { email, password, rememberMe } = schema.parse(req.body);
+            const result = await this.authService.login(
+                email,
+                password,
+                rememberMe
+            );
+            res.status(200).json({
+                success: true,
+                data: result,
+            });
+        } catch (error) {
+            if (error instanceof z.ZodError) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Validation error",
+                    errors: error.errors.map((err) => ({
+                        path: err.path,
+                        message: err.message,
+                    })),
+                });
+            }
+            res.status(400).json({
+                success: false,
+                error: (error as Error).message,
+            });
+        }
+    }
+
+    //Refresh token
+    async refreshToken(req: Request, res: Response) {
+        try {
+            const schema = z.object({
+                refreshToken: z.string(),
+            });
+
+            const { refreshToken } = schema.parse(req.body);
+            const tokens = await this.authService.refreshToken(refreshToken);
+            res.status(200).json(tokens);
         } catch (error) {
             if (error instanceof z.ZodError) {
                 return res.status(400).json({
@@ -36,19 +114,6 @@ export class AuthController {
                 });
             }
             res.status(400).json({ message: (error as Error).message });
-        }
-    }
-
-    //Login useer
-    async login(req: Request, res: Response) {
-        try {
-            const { email, password } = req.body;
-            const result = await this.authService.login(email, password);
-            res.status(200).json(result);
-        } catch (error) {
-            res.status(400).json({
-                message: (error as Error).message,
-            });
         }
     }
 
