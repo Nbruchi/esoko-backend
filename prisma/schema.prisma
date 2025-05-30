@@ -13,21 +13,18 @@ datasource db {
 model User {
   id            String    @id @default(uuid())
   email         String    @unique
-  password      String
   firstName     String
   lastName      String
   role          UserRole  @default(CUSTOMER)
   phoneNumber   String?
   profilePhoto  String?   // URL to the profile photo
   isVerified    Boolean   @default(false)
-  otp           String?   // 6-digit OTP
-  otpExpiry     DateTime? // OTP expiration time
-  resetToken    String?
-  resetTokenExpiry DateTime?
   notificationPreferences Json?    @default("{\"emailNotifications\":true,\"smsNotifications\":true,\"orderUpdates\":true,\"promotions\":true}")
   settings      Json?     @default("{\"language\":\"en\",\"currency\":\"RWF\",\"theme\":\"light\",\"timezone\":\"UTC\"}")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  // Relations
+  auth          Auth?
   addresses     Address[]
   orders        Order[]
   reviews       Review[]
@@ -35,10 +32,39 @@ model User {
   notifications Notification[]
   refundRequests RefundRequest[]
   wishlist      Wishlist[]
-  lastLogin     DateTime?
   cart          Cart[]
   searchHistory SearchHistory[]
   refreshTokens RefreshToken[]
+  verificationTokens VerificationToken[]
+}
+
+model Auth {
+  id              String    @id @default(uuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  password        String
+  lastLogin       DateTime?
+  loginAttempts   Int       @default(0)
+  lastAttempt     DateTime?
+  isLocked        Boolean   @default(false)
+  lockedUntil     DateTime?
+  twoFactorEnabled Boolean  @default(false)
+  twoFactorSecret String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model VerificationToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  type      TokenType
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
 }
 
 model Address {
@@ -270,4 +296,10 @@ enum RefundStatus {
   APPROVED
   REJECTED
   COMPLETED
-} 
+}
+
+enum TokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+  TWO_FACTOR
+}
