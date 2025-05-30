@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { prisma } from "@/config/database";
+import { sendEmail } from "@/config/email";
 
 export class EmailService {
     private transporter: nodemailer.Transporter;
@@ -36,108 +37,111 @@ export class EmailService {
         });
     }
 
-    async sendVerificationEmail(userId: string, otp: string): Promise<void> {
-        try {
-            const user = await prisma.user.findUnique({
-                where: { id: userId },
-                select: { email: true, firstName: true },
-            });
+    async sendVerificationEmail(userId: string, email: string): Promise<void> {
+        const verificationToken = await prisma.verificationToken.findFirst({
+            where: {
+                userId,
+                type: "EMAIL_VERIFICATION",
+                expiresAt: { gt: new Date() },
+            },
+        });
 
-            if (!user) throw new Error("User not found");
-
-            const mailOptions = {
-                from: `"Esoko" <${process.env.SMTP_USER}>`,
-                to: user.email,
-                subject: "Verify your email address",
-                html: `
-                    <h1>Welcome to Esoko!</h1>
-                    <p>Hi ${user.firstName},</p>
-                    <p>Please use the following OTP to verify your email address:</p>
-                    <h2 style="font-size: 24px; letter-spacing: 5px; color: #4F46E5; text-align: center; padding: 10px; background: #F3F4F6; border-radius: 5px;">${otp}</h2>
-                    <p>This OTP will expire in 10 minutes.</p>
-                    <p>If you didn't create an account, you can safely ignore this email.</p>
-                `,
-            };
-
-            const info = await this.transporter.sendMail(mailOptions);
-            console.log("Verification email sent:", info.messageId);
-        } catch (error) {
-            console.error("Error sending verification email:", error);
-            throw new Error(
-                "Failed to send verification email. Please try again later."
-            );
+        if (!verificationToken) {
+            throw new Error("No valid verification token found");
         }
+
+        const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken.token}`;
+
+        await sendEmail({
+            to: email,
+            subject: "Verify your email address",
+            html: `
+                <h1>Welcome to Esoko!</h1>
+                <p>Please verify your email address by clicking the link below:</p>
+                <a href="${verificationUrl}">Verify Email</a>
+                <p>This link will expire in 24 hours.</p>
+                <p>If you did not create an account, please ignore this email.</p>
+            `,
+        });
     }
 
     async sendPasswordResetEmail(userId: string, token: string): Promise<void> {
-        try {
-            const user = await prisma.user.findUnique({
-                where: { id: userId },
-                select: { email: true, firstName: true },
-            });
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+        });
 
-            if (!user) throw new Error("User not found");
-
-            const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
-
-            const mailOptions = {
-                from: `"Esoko" <${process.env.SMTP_USER}>`,
-                to: user.email,
-                subject: "Reset your password",
-                html: `
-                    <h1>Password Reset Request</h1>
-                    <p>Hi ${user.firstName},</p>
-                    <p>You requested to reset your password. Click the link below to set a new password:</p>
-                    <a href="${resetUrl}">Reset Password</a>
-                    <p>This link will expire in 1 hour.</p>
-                    <p>If you didn't request this, you can safely ignore this email.</p>
-                `,
-            };
-
-            const info = await this.transporter.sendMail(mailOptions);
-            console.log("Password reset email sent:", info.messageId);
-        } catch (error) {
-            console.error("Error sending password reset email:", error);
-            throw new Error(
-                "Failed to send password reset email. Please try again later."
-            );
+        if (!user) {
+            throw new Error("User not found");
         }
+
+        const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+
+        await sendEmail({
+            to: user.email,
+            subject: "Reset your password",
+            html: `
+                <h1>Password Reset Request</h1>
+                <p>You requested to reset your password. Click the link below to reset it:</p>
+                <a href="${resetUrl}">Reset Password</a>
+                <p>This link will expire in 1 hour.</p>
+                <p>If you did not request a password reset, please ignore this email.</p>
+            `,
+        });
     }
 
     async sendOrderConfirmationEmail(
         userId: string,
         orderId: string
     ): Promise<void> {
-        try {
-            const user = await prisma.user.findUnique({
-                where: { id: userId },
-                select: { email: true, firstName: true },
-            });
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+        });
 
-            if (!user) throw new Error("User not found");
-
-            const orderUrl = `${process.env.FRONTEND_URL}/orders/${orderId}`;
-
-            const mailOptions = {
-                from: `"Esoko" <${process.env.SMTP_USER}>`,
-                to: user.email,
-                subject: "Order Confirmation",
-                html: `
-                    <h1>Order Confirmed!</h1>
-                    <p>Hi ${user.firstName},</p>
-                    <p>Your order has been confirmed. You can view your order details here:</p>
-                    <a href="${orderUrl}">View Order</a>
-                    <p>Thank you for shopping with us!</p>
-                `,
-            };
-
-            const info = await this.transporter.sendMail(mailOptions);
-            console.log("Order confirmation email sent:", info.messageId);
-        } catch (error) {
-            console.error("Error sending order confirmation email:", error);
-            throw new Error(
-                "Failed to send order confirmation email. Please try again later."
-            );
+        if (!user) {
+            throw new Error("User not found");
         }
+
+        const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: {
+                items: {
+                    include: {
+                        product: true,
+                    },
+                },
+            },
+        });
+
+        if (!order) {
+            throw new Error("Order not found");
+        }
+
+        const totalAmount = order.items.reduce(
+            (sum, item) => sum + item.price * item.quantity,
+            0
+        );
+
+        await sendEmail({
+            to: user.email,
+            subject: "Order Confirmation",
+            html: `
+                <h1>Order Confirmation</h1>
+                <p>Thank you for your order!</p>
+                <p>Order ID: ${order.id}</p>
+                <p>Total: ${totalAmount}</p>
+                <h2>Order Items:</h2>
+                <ul>
+                    ${order.items
+                        .map(
+                            (item) => `
+                        <li>
+                            ${item.product.name} x ${item.quantity} - ${item.price}
+                        </li>
+                    `
+                        )
+                        .join("")}
+                </ul>
+            `,
+        });
     }
 }

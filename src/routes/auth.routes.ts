@@ -1,5 +1,12 @@
 import { Router } from "express";
 import { AuthController } from "@/controllers/auth.controller";
+import { authenticate } from "@/middleware/auth";
+import {
+    loginLimiter,
+    refreshTokenLimiter,
+    passwordResetLimiter,
+    registerLimiter,
+} from "@/middleware/rateLimit";
 
 const router = Router();
 const authController = new AuthController();
@@ -27,18 +34,43 @@ const authController = new AuthController();
  *                 format: email
  *               password:
  *                 type: string
- *                 minLength: 6
+ *                 minLength: 8
  *               firstName:
  *                 type: string
  *               lastName:
  *                 type: string
+ *               phoneNumber:
+ *                 type: string
+ *               profilePhoto:
+ *                 type: string
  *     responses:
  *       201:
  *         description: User registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     user:
+ *                       type: object
+ *                     tokens:
+ *                       type: object
+ *                       properties:
+ *                         accessToken:
+ *                           type: string
+ *                         refreshToken:
+ *                           type: string
+ *                         expiresAt:
+ *                           type: number
  *       400:
  *         description: Invalid input data
  */
-router.post("/register", authController.register.bind(authController));
+router.post("/register", registerLimiter, authController.register);
 
 /**
  * @swagger
@@ -61,6 +93,8 @@ router.post("/register", authController.register.bind(authController));
  *                 format: email
  *               password:
  *                 type: string
+ *               rememberMe:
+ *                 type: boolean
  *     responses:
  *       200:
  *         description: Login successful
@@ -69,19 +103,33 @@ router.post("/register", authController.register.bind(authController));
  *             schema:
  *               type: object
  *               properties:
- *                 token:
- *                   type: string
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     user:
+ *                       type: object
+ *                     tokens:
+ *                       type: object
+ *                       properties:
+ *                         accessToken:
+ *                           type: string
+ *                         refreshToken:
+ *                           type: string
+ *                         expiresAt:
+ *                           type: number
  *       401:
  *         description: Invalid credentials
  */
-router.post("/login", authController.login.bind(authController));
+router.post("/login", loginLimiter, authController.login);
 
 /**
  * @swagger
  * /api/auth/verify-email:
  *   post:
  *     tags: [Authentication]
- *     summary: Verify user email with OTP
+ *     summary: Verify user email with token
  *     requestBody:
  *       required: true
  *       content:
@@ -89,26 +137,24 @@ router.post("/login", authController.login.bind(authController));
  *           schema:
  *             type: object
  *             required:
- *               - otp
+ *               - token
  *             properties:
- *               otp:
+ *               token:
  *                 type: string
- *                 minLength: 6
- *                 maxLength: 6
  *     responses:
  *       200:
  *         description: Email verified successfully
  *       400:
- *         description: Invalid or expired OTP
+ *         description: Invalid or expired token
  */
-router.post("/verify-email", authController.verifyEmail.bind(authController));
+router.post("/verify-email", authController.verifyEmail);
 
 /**
  * @swagger
  * /api/auth/resend-verification:
  *   post:
  *     tags: [Authentication]
- *     summary: Resend verification OTP
+ *     summary: Resend verification email
  *     requestBody:
  *       required: true
  *       content:
@@ -123,14 +169,11 @@ router.post("/verify-email", authController.verifyEmail.bind(authController));
  *                 format: email
  *     responses:
  *       200:
- *         description: New OTP sent successfully
+ *         description: Verification email sent successfully
  *       400:
  *         description: Invalid email or user already verified
  */
-router.post(
-    "/resend-verification",
-    authController.resendVerificationOTP.bind(authController)
-);
+router.post("/resend-verification", authController.resendVerificationOTP);
 
 /**
  * @swagger
@@ -153,12 +196,13 @@ router.post(
  *     responses:
  *       200:
  *         description: Password reset email sent
- *       404:
- *         description: User not found
+ *       400:
+ *         description: Invalid email
  */
 router.post(
     "/forgot-password",
-    authController.requestPasswordReset.bind(authController)
+    passwordResetLimiter,
+    authController.requestPasswordReset
 );
 
 /**
@@ -175,13 +219,13 @@ router.post(
  *             type: object
  *             required:
  *               - token
- *               - password
+ *               - newPassword
  *             properties:
  *               token:
  *                 type: string
- *               password:
+ *               newPassword:
  *                 type: string
- *                 minLength: 6
+ *                 minLength: 8
  *     responses:
  *       200:
  *         description: Password reset successful
@@ -190,89 +234,9 @@ router.post(
  */
 router.post(
     "/reset-password",
-    authController.resetPassword.bind(authController)
+    passwordResetLimiter,
+    authController.resetPassword
 );
-
-/**
- * @swagger
- * /api/auth/logout:
- *   post:
- *     tags: [Authentication]
- *     summary: Logout user
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Logout successful
- */
-router.post("/logout", authController.logout.bind(authController));
-
-/**
- * @swagger
- * /api/auth/change-password:
- *   post:
- *     tags: [Authentication]
- *     summary: Change user password
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - currentPassword
- *               - newPassword
- *             properties:
- *               currentPassword:
- *                 type: string
- *               newPassword:
- *                 type: string
- *                 minLength: 6
- *     responses:
- *       200:
- *         description: Password changed successfully
- *       401:
- *         description: Unauthorized or invalid current password
- *       400:
- *         description: Invalid input
- */
-router.post(
-    "/change-password",
-    authController.changePassword.bind(authController)
-);
-
-/**
- * @swagger
- * /api/auth/me:
- *   get:
- *     tags: [Authentication]
- *     summary: Get current user profile
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Current user profile retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 id:
- *                   type: string
- *                 email:
- *                   type: string
- *                 firstName:
- *                   type: string
- *                 lastName:
- *                   type: string
- *                 role:
- *                   type: string
- *       401:
- *         description: Unauthorized
- */
-router.get("/me", authController.getCurrentUser.bind(authController));
 
 /**
  * @swagger
@@ -299,15 +263,119 @@ router.get("/me", authController.getCurrentUser.bind(authController));
  *             schema:
  *               type: object
  *               properties:
- *                 accessToken:
- *                   type: string
- *                 refreshToken:
- *                   type: string
- *                 expiresAt:
- *                   type: number
- *       400:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     accessToken:
+ *                       type: string
+ *                     refreshToken:
+ *                       type: string
+ *                     expiresAt:
+ *                       type: number
+ *       401:
  *         description: Invalid refresh token
  */
-router.post("/refresh", authController.refreshToken.bind(authController));
+router.post("/refresh", refreshTokenLimiter, authController.refreshToken);
+
+/**
+ * @swagger
+ * /api/auth/sessions:
+ *   get:
+ *     tags: [Authentication]
+ *     summary: Get user's active sessions
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of active sessions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       expiresAt:
+ *                         type: string
+ *                         format: date-time
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *       401:
+ *         description: Unauthorized
+ */
+router.get("/sessions", authenticate, authController.getUserSessions);
+
+/**
+ * @swagger
+ * /api/auth/sessions/revoke:
+ *   post:
+ *     tags: [Authentication]
+ *     summary: Revoke a specific session
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - tokenId
+ *             properties:
+ *               tokenId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Session revoked successfully
+ *       401:
+ *         description: Unauthorized
+ */
+router.post("/sessions/revoke", authenticate, authController.revokeSession);
+
+/**
+ * @swagger
+ * /api/auth/sessions/revoke-all:
+ *   post:
+ *     tags: [Authentication]
+ *     summary: Revoke all sessions
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All sessions revoked successfully
+ *       401:
+ *         description: Unauthorized
+ */
+router.post(
+    "/sessions/revoke-all",
+    authenticate,
+    authController.revokeAllSessions
+);
+
+/**
+ * @swagger
+ * /api/auth/logout:
+ *   post:
+ *     tags: [Authentication]
+ *     summary: Logout user
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Logout successful
+ *       401:
+ *         description: Unauthorized
+ */
+router.post("/logout", authenticate, authController.logout);
 
 export default router;

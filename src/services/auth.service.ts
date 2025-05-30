@@ -1,9 +1,10 @@
-import { User, UserRole } from "@prisma/client";
+import { User, UserRole, TokenType } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { generateTokens } from "@/config/jwt";
 import { prisma } from "@/config/database";
 import { EmailService } from "./email.service";
 import crypto from "crypto";
+import { Request } from "express";
 
 export class AuthService {
     private emailService: EmailService;
@@ -45,31 +46,46 @@ export class AuthService {
         // Hash password
         const hashedPassword = await bcrypt.hash(userData.password, 10);
 
-        // Generate OTP
-        const otp = this.generateOTP();
-        const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+        // Create user and auth in a transaction
+        const result = await prisma.$transaction(async (tx) => {
+            // Create user
+            const user = await tx.user.create({
+                data: {
+                    ...userData,
+                    isVerified: false,
+                    role: userData.role || "CUSTOMER",
+                },
+            });
 
-        // Create user with role (defaults to CUSTOMER if not specified)
-        const user = await prisma.user.create({
-            data: {
-                ...userData,
-                password: hashedPassword,
-                otp,
-                otpExpiry,
-                isVerified: false,
-                role: userData.role || "CUSTOMER",
-            },
+            // Create auth record
+            await tx.auth.create({
+                data: {
+                    userId: user.id,
+                    password: hashedPassword,
+                },
+            });
+
+            // Create verification token
+            const verificationToken = crypto.randomBytes(32).toString("hex");
+            await tx.verificationToken.create({
+                data: {
+                    userId: user.id,
+                    token: verificationToken,
+                    type: "EMAIL_VERIFICATION",
+                    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+                },
+            });
+
+            return user;
         });
 
-        // Send verification email with OTP
-        await this.emailService.sendVerificationEmail(user.id, otp);
+        // Send verification email
+        await this.emailService.sendVerificationEmail(result.id, result.email);
 
         // Generate tokens
-        const tokens = await this.generateAndStoreTokens(user);
+        const tokens = await this.generateAndStoreTokens(result);
 
-        // Remove password from user object
-        const { password, ...userWithoutPassword } = user;
-        return { user: userWithoutPassword, tokens };
+        return { user: result, tokens };
     }
 
     // Resend verification OTP
@@ -86,59 +102,45 @@ export class AuthService {
             throw new Error("Email is already verified");
         }
 
-        // Generate new OTP
-        const otp = this.generateOTP();
-        const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
-        // Update user with new OTP
-        await prisma.user.update({
-            where: { id: user.id },
+        // Create new verification token
+        const verificationToken = crypto.randomBytes(32).toString("hex");
+        await prisma.verificationToken.create({
             data: {
-                otp,
-                otpExpiry,
+                userId: user.id,
+                token: verificationToken,
+                type: "EMAIL_VERIFICATION",
+                expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
             },
         });
 
         // Send new verification email
-        await this.emailService.sendVerificationEmail(user.id, otp);
+        await this.emailService.sendVerificationEmail(user.id, user.email);
     }
 
-    // Verify email with OTP
-    async verifyEmail(otp: string): Promise<void> {
-        console.log("Attempting to verify email with OTP:", otp);
-
-        const user = await prisma.user.findFirst({
+    // Verify email
+    async verifyEmail(token: string): Promise<void> {
+        const verificationToken = await prisma.verificationToken.findFirst({
             where: {
-                otp,
-                otpExpiry: {
-                    gt: new Date(),
-                },
+                token,
+                type: "EMAIL_VERIFICATION",
+                expiresAt: { gt: new Date() },
             },
+            include: { user: true },
         });
 
-        console.log("User found:", user ? "Yes" : "No");
-        if (user) {
-            console.log("User details:", {
-                id: user.id,
-                email: user.email,
-                isVerified: user.isVerified,
-            });
+        if (!verificationToken) {
+            throw new Error("Invalid or expired verification token");
         }
 
-        if (!user) {
-            throw new Error("Invalid or expired OTP");
-        }
-
-        await prisma.user.update({
-            where: { id: user.id },
-            data: {
-                isVerified: true,
-                otp: null,
-                otpExpiry: null,
-            },
-        });
-
-        console.log("Email verification completed successfully");
+        await prisma.$transaction([
+            prisma.user.update({
+                where: { id: verificationToken.userId },
+                data: { isVerified: true },
+            }),
+            prisma.verificationToken.delete({
+                where: { id: verificationToken.id },
+            }),
+        ]);
     }
 
     // Login user
@@ -154,75 +156,69 @@ export class AuthService {
             expiresAt: number;
         };
     }> {
-        // Find user
+        // Find user and auth
         const user = await prisma.user.findUnique({
             where: { email },
+            include: { auth: true },
         });
 
-        if (!user) {
+        if (!user || !user.auth) {
             throw new Error("Invalid credentials");
+        }
+
+        // Check if account is locked
+        if (
+            user.auth.isLocked &&
+            user.auth.lockedUntil &&
+            user.auth.lockedUntil > new Date()
+        ) {
+            throw new Error("Account is locked. Please try again later.");
         }
 
         // Verify password
-        const isValidPassword = await bcrypt.compare(password, user.password);
+        const isValidPassword = await bcrypt.compare(
+            password,
+            user.auth.password
+        );
         if (!isValidPassword) {
+            // Update login attempts
+            await prisma.auth.update({
+                where: { userId: user.id },
+                data: {
+                    loginAttempts: { increment: 1 },
+                    lastAttempt: new Date(),
+                    isLocked: user.auth.loginAttempts >= 4,
+                    lockedUntil:
+                        user.auth.loginAttempts >= 4
+                            ? new Date(Date.now() + 15 * 60 * 1000)
+                            : null, // Lock for 15 minutes
+                },
+            });
             throw new Error("Invalid credentials");
         }
 
-        // Update last login
-        await prisma.user.update({
-            where: { id: user.id },
-            data: { lastLogin: new Date() },
+        // Reset login attempts on successful login
+        await prisma.auth.update({
+            where: { userId: user.id },
+            data: {
+                loginAttempts: 0,
+                lastLogin: new Date(),
+                isLocked: false,
+                lockedUntil: null,
+            },
         });
 
         // Generate tokens
         const tokens = await this.generateAndStoreTokens(user, rememberMe);
 
-        // Remove password from user object
-        const { password: _, ...userWithoutPassword } = user;
-
-        return { user: userWithoutPassword, tokens };
-    }
-
-    // Refresh token
-    async refreshToken(token: string): Promise<{
-        accessToken: string;
-        refreshToken: string;
-        expiresAt: number;
-    }> {
-        // Find refresh token
-        const refreshToken = await prisma.refreshToken.findUnique({
-            where: { token },
-            include: { user: true },
-        });
-
-        if (!refreshToken || refreshToken.expiresAt < new Date()) {
-            throw new Error("Invalid or expired refresh token");
-        }
-
-        // Generate new tokens
-        const tokens = await this.generateAndStoreTokens(refreshToken.user);
-
-        // Delete old refresh token
-        await prisma.refreshToken.delete({
-            where: { id: refreshToken.id },
-        });
-
-        return tokens;
-    }
-
-    // Logout
-    async logout(userId: string): Promise<void> {
-        // Delete all refresh tokens for the user
-        await prisma.refreshToken.deleteMany({
-            where: { userId },
-        });
+        return { user, tokens };
     }
 
     // Private helper to generate and store tokens
     private async generateAndStoreTokens(
         user: User,
-        rememberMe?: boolean
+        rememberMe?: boolean,
+        deviceInfo?: string
     ): Promise<{
         accessToken: string;
         refreshToken: string;
@@ -253,6 +249,80 @@ export class AuthService {
         return { accessToken, refreshToken, expiresAt };
     }
 
+    // Refresh token
+    async refreshToken(
+        token: string,
+        deviceInfo: string
+    ): Promise<{
+        accessToken: string;
+        refreshToken: string;
+        expiresAt: number;
+    }> {
+        // Find refresh token
+        const refreshToken = await prisma.refreshToken.findUnique({
+            where: { token },
+            include: { user: true },
+        });
+
+        if (!refreshToken || refreshToken.expiresAt < new Date()) {
+            throw new Error("Invalid or expired refresh token");
+        }
+
+        // Generate new tokens
+        const tokens = await this.generateAndStoreTokens(
+            refreshToken.user,
+            true, // Keep the same remember me setting
+            deviceInfo
+        );
+
+        // Delete old refresh token
+        await prisma.refreshToken.delete({
+            where: { id: refreshToken.id },
+        });
+
+        return tokens;
+    }
+
+    // Get all active sessions for a user
+    async getUserSessions(userId: string) {
+        return prisma.refreshToken.findMany({
+            where: {
+                userId,
+                expiresAt: { gt: new Date() },
+            },
+            select: {
+                id: true,
+                expiresAt: true,
+                createdAt: true,
+            },
+        });
+    }
+
+    // Revoke a specific session
+    async revokeSession(tokenId: string, userId: string) {
+        return prisma.refreshToken.delete({
+            where: {
+                id: tokenId,
+                userId, // Ensure the token belongs to the user
+            },
+        });
+    }
+
+    // Revoke all sessions for a user
+    async revokeAllSessions(userId: string) {
+        return prisma.refreshToken.deleteMany({
+            where: { userId },
+        });
+    }
+
+    // Logout
+    async logout(userId: string): Promise<void> {
+        // Delete all refresh tokens for the user
+        await prisma.refreshToken.deleteMany({
+            where: { userId },
+        });
+    }
+
     // Request password reset
     async requestPasswordReset(email: string): Promise<void> {
         const user = await prisma.user.findUnique({
@@ -265,13 +335,12 @@ export class AuthService {
         }
 
         const resetToken = crypto.randomBytes(32).toString("hex");
-        const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour
-
-        await prisma.user.update({
-            where: { id: user.id },
+        await prisma.verificationToken.create({
             data: {
-                resetToken,
-                resetTokenExpiry,
+                userId: user.id,
+                token: resetToken,
+                type: "PASSWORD_RESET",
+                expiresAt: new Date(Date.now() + 3600000), // 1 hour
             },
         });
 
@@ -280,56 +349,57 @@ export class AuthService {
 
     // Reset password
     async resetPassword(token: string, newPassword: string): Promise<void> {
-        const user = await prisma.user.findFirst({
+        const verificationToken = await prisma.verificationToken.findFirst({
             where: {
-                resetToken: token,
-                resetTokenExpiry: {
-                    gt: new Date(),
-                },
+                token,
+                type: "PASSWORD_RESET",
+                expiresAt: { gt: new Date() },
             },
+            include: { user: true },
         });
 
-        if (!user) {
+        if (!verificationToken) {
             throw new Error("Invalid or expired reset token");
         }
 
         const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-        await prisma.user.update({
-            where: { id: user.id },
-            data: {
-                password: hashedPassword,
-                resetToken: null,
-                resetTokenExpiry: null,
-            },
-        });
+        await prisma.$transaction([
+            prisma.auth.update({
+                where: { userId: verificationToken.userId },
+                data: { password: hashedPassword },
+            }),
+            prisma.verificationToken.delete({
+                where: { id: verificationToken.id },
+            }),
+        ]);
     }
 
+    // Change password
     async changePassword(
         userId: string,
         currentPassword: string,
         newPassword: string
     ): Promise<void> {
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { password: true },
+        const auth = await prisma.auth.findUnique({
+            where: { userId },
         });
 
-        if (!user) {
+        if (!auth) {
             throw new Error("User not found");
         }
 
         const isPasswordValid = await bcrypt.compare(
             currentPassword,
-            user.password
+            auth.password
         );
         if (!isPasswordValid) {
             throw new Error("Current password is incorrect");
         }
 
         const hashedPassword = await bcrypt.hash(newPassword, 10);
-        await prisma.user.update({
-            where: { id: userId },
+        await prisma.auth.update({
+            where: { userId },
             data: { password: hashedPassword },
         });
     }
@@ -347,7 +417,6 @@ export class AuthService {
             throw new Error("User not found");
         }
 
-        const { password, ...userWithoutPassword } = user;
-        return userWithoutPassword;
+        return user;
     }
 }
