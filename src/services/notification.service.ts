@@ -1,7 +1,9 @@
 import { prisma } from "@/config/database";
 import { getIO } from "@/config/socket";
 import { paginate, PaginationParams } from "@/utils/pagination";
-import { Notification, NotificationType, User } from "@prisma/client";
+import { Notification, NotificationType, User, Prisma } from "@prisma/client";
+
+type NotificationMetadata = Record<string, unknown>;
 
 export class NotificationService {
     private getSocketIO() {
@@ -20,14 +22,14 @@ export class NotificationService {
         userId: string;
         type: NotificationType;
         message: string;
-        metadata?: Record<string, any>;
+        metadata?: NotificationMetadata;
     }): Promise<Notification> {
         const notification = await prisma.notification.create({
             data: {
                 userId: data.userId,
                 type: data.type,
                 message: data.message,
-                metadata: data.metadata || {},
+                metadata: data.metadata as Prisma.InputJsonValue,
             },
         });
 
@@ -107,11 +109,14 @@ export class NotificationService {
             userId: string;
             type: NotificationType;
             message: string;
-            metadata?: Record<string, any>;
+            metadata?: NotificationMetadata;
         }>
     ): Promise<Notification[]> {
         const created = await prisma.notification.createMany({
-            data: notifications,
+            data: notifications.map((n) => ({
+                ...n,
+                metadata: n.metadata as Prisma.InputJsonValue,
+            })),
         });
 
         const createdNotifications = await prisma.notification.findMany({
@@ -188,14 +193,17 @@ export class NotificationService {
         userId: string;
         type: NotificationType;
         template: string;
-        variables: Record<string, any>;
+        variables: Record<string, unknown>;
     }): Promise<Notification> {
         const message = this.processTemplate(data.template, data.variables);
         return this.createNotification({
             userId: data.userId,
             type: data.type,
             message,
-            metadata: { template: data.template, variables: data.variables },
+            metadata: {
+                template: data.template,
+                variables: data.variables,
+            } as NotificationMetadata,
         });
     }
 
@@ -262,7 +270,7 @@ export class NotificationService {
         userId: string;
         type: NotificationType;
         message: string;
-        metadata?: Record<string, any>;
+        metadata?: NotificationMetadata;
         priority: "high" | "medium" | "low";
     }): Promise<Notification> {
         const notification = await prisma.notification.create({
@@ -273,7 +281,7 @@ export class NotificationService {
                 metadata: {
                     ...data.metadata,
                     priority: data.priority,
-                },
+                } as Prisma.InputJsonValue,
             },
         });
 
@@ -283,7 +291,7 @@ export class NotificationService {
             io.to(data.userId).emit("notification", {
                 ...notification,
                 metadata: {
-                    ...((notification.metadata as Record<string, any>) || {}),
+                    ...((notification.metadata as NotificationMetadata) || {}),
                     priority: data.priority,
                 },
             });
@@ -298,7 +306,7 @@ export class NotificationService {
         type: NotificationType;
         message: string;
         expiresAt: Date;
-        metadata?: Record<string, any>;
+        metadata?: NotificationMetadata;
     }): Promise<Notification> {
         const notification = await prisma.notification.create({
             data: {
@@ -308,7 +316,7 @@ export class NotificationService {
                 metadata: {
                     ...data.metadata,
                     expiresAt: data.expiresAt,
-                },
+                } as Prisma.InputJsonValue,
             },
         });
 
@@ -385,10 +393,11 @@ export class NotificationService {
     //Helper method to process template
     private processTemplate(
         template: string,
-        variables: Record<string, any>
+        variables: Record<string, unknown>
     ): string {
         return template.replace(/\${(\w+)}/g, (match, key) => {
-            return variables[key] !== undefined ? variables[key] : match;
+            const value = variables[key];
+            return value !== undefined ? String(value) : match;
         });
     }
 
