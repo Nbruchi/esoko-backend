@@ -12,6 +12,11 @@ export class AuthService {
         this.emailService = new EmailService();
     }
 
+    // Generate OTP
+    private generateOTP(): string {
+        return Math.floor(100000 + Math.random() * 900000).toString();
+    }
+
     // Register user
     async register(userData: {
         email: string;
@@ -40,25 +45,24 @@ export class AuthService {
         // Hash password
         const hashedPassword = await bcrypt.hash(userData.password, 10);
 
-        // Generate verification token
-        const verificationToken = crypto.randomBytes(32).toString("hex");
+        // Generate OTP
+        const otp = this.generateOTP();
+        const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
         // Create user with role (defaults to CUSTOMER if not specified)
         const user = await prisma.user.create({
             data: {
                 ...userData,
                 password: hashedPassword,
-                verificationToken,
+                otp,
+                otpExpiry,
                 isVerified: false,
                 role: userData.role || "CUSTOMER",
             },
         });
 
-        // Send verification email
-        await this.emailService.sendVerificationEmail(
-            user.id,
-            verificationToken
-        );
+        // Send verification email with OTP
+        await this.emailService.sendVerificationEmail(user.id, otp);
 
         // Generate tokens
         const tokens = await this.generateAndStoreTokens(user);
@@ -66,6 +70,75 @@ export class AuthService {
         // Remove password from user object
         const { password, ...userWithoutPassword } = user;
         return { user: userWithoutPassword, tokens };
+    }
+
+    // Resend verification OTP
+    async resendVerificationOTP(email: string): Promise<void> {
+        const user = await prisma.user.findUnique({
+            where: { email },
+        });
+
+        if (!user) {
+            throw new Error("User not found");
+        }
+
+        if (user.isVerified) {
+            throw new Error("Email is already verified");
+        }
+
+        // Generate new OTP
+        const otp = this.generateOTP();
+        const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+        // Update user with new OTP
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                otp,
+                otpExpiry,
+            },
+        });
+
+        // Send new verification email
+        await this.emailService.sendVerificationEmail(user.id, otp);
+    }
+
+    // Verify email with OTP
+    async verifyEmail(otp: string): Promise<void> {
+        console.log("Attempting to verify email with OTP:", otp);
+
+        const user = await prisma.user.findFirst({
+            where: {
+                otp,
+                otpExpiry: {
+                    gt: new Date(),
+                },
+            },
+        });
+
+        console.log("User found:", user ? "Yes" : "No");
+        if (user) {
+            console.log("User details:", {
+                id: user.id,
+                email: user.email,
+                isVerified: user.isVerified,
+            });
+        }
+
+        if (!user) {
+            throw new Error("Invalid or expired OTP");
+        }
+
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                isVerified: true,
+                otp: null,
+                otpExpiry: null,
+            },
+        });
+
+        console.log("Email verification completed successfully");
     }
 
     // Login user
@@ -178,25 +251,6 @@ export class AuthService {
         });
 
         return { accessToken, refreshToken, expiresAt };
-    }
-
-    // Verify email
-    async verifyEmail(token: string): Promise<void> {
-        const user = await prisma.user.findFirst({
-            where: { verificationToken: token },
-        });
-
-        if (!user) {
-            throw new Error("Invalid verification token");
-        }
-
-        await prisma.user.update({
-            where: { id: user.id },
-            data: {
-                isVerified: true,
-                verificationToken: null,
-            },
-        });
     }
 
     // Request password reset

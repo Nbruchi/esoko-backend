@@ -20,8 +20,9 @@ model User {
   phoneNumber   String?
   profilePhoto  String?   // URL to the profile photo
   isVerified    Boolean   @default(false)
-  verificationToken String?
-  resetToken String?
+  otp           String?   // 6-digit OTP
+  otpExpiry     DateTime? // OTP expiration time
+  resetToken    String?
   resetTokenExpiry DateTime?
   notificationPreferences Json?    @default("{\"emailNotifications\":true,\"smsNotifications\":true,\"orderUpdates\":true,\"promotions\":true}")
   settings      Json?     @default("{\"language\":\"en\",\"currency\":\"RWF\",\"theme\":\"light\",\"timezone\":\"UTC\"}")

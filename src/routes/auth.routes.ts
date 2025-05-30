@@ -81,7 +81,7 @@ router.post("/login", authController.login.bind(authController));
  * /api/auth/verify-email:
  *   post:
  *     tags: [Authentication]
- *     summary: Verify user email
+ *     summary: Verify user email with OTP
  *     requestBody:
  *       required: true
  *       content:
@@ -89,17 +89,48 @@ router.post("/login", authController.login.bind(authController));
  *           schema:
  *             type: object
  *             required:
- *               - token
+ *               - otp
  *             properties:
- *               token:
+ *               otp:
  *                 type: string
+ *                 minLength: 6
+ *                 maxLength: 6
  *     responses:
  *       200:
  *         description: Email verified successfully
  *       400:
- *         description: Invalid or expired token
+ *         description: Invalid or expired OTP
  */
 router.post("/verify-email", authController.verifyEmail.bind(authController));
+
+/**
+ * @swagger
+ * /api/auth/resend-verification:
+ *   post:
+ *     tags: [Authentication]
+ *     summary: Resend verification OTP
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *     responses:
+ *       200:
+ *         description: New OTP sent successfully
+ *       400:
+ *         description: Invalid email or user already verified
+ */
+router.post(
+    "/resend-verification",
+    authController.resendVerificationOTP.bind(authController)
+);
 
 /**
  * @swagger

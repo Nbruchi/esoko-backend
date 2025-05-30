@@ -40,6 +40,7 @@ export class AuthController {
             res.status(201).json({
                 success: true,
                 data: result,
+                redirect: `/auth/verify-email?email=${encodeURIComponent(validatedData.email)}`,
             });
         } catch (error) {
             if (error instanceof z.ZodError) {
@@ -120,11 +121,60 @@ export class AuthController {
     //Verify email
     async verifyEmail(req: Request, res: Response) {
         try {
-            const { token } = req.params;
-            await this.authService.verifyEmail(token);
-            res.json({ message: `Email verified successfully` });
+            const schema = z.object({
+                otp: z.string().length(6, "OTP must be 6 digits"),
+            });
+
+            const { otp } = schema.parse(req.body);
+            await this.authService.verifyEmail(otp);
+            res.json({
+                success: true,
+                message: "Email verified successfully",
+            });
         } catch (error) {
+            if (error instanceof z.ZodError) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Validation error",
+                    errors: error.errors.map((err) => ({
+                        path: err.path,
+                        message: err.message,
+                    })),
+                });
+            }
             res.status(400).json({
+                success: false,
+                message: (error as Error).message,
+            });
+        }
+    }
+
+    //Resend verification OTP
+    async resendVerificationOTP(req: Request, res: Response) {
+        try {
+            const schema = z.object({
+                email: z.string().email("Invalid email address"),
+            });
+
+            const { email } = schema.parse(req.body);
+            await this.authService.resendVerificationOTP(email);
+            res.json({
+                success: true,
+                message: "New OTP sent successfully",
+            });
+        } catch (error) {
+            if (error instanceof z.ZodError) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Validation error",
+                    errors: error.errors.map((err) => ({
+                        path: err.path,
+                        message: err.message,
+                    })),
+                });
+            }
+            res.status(400).json({
+                success: false,
                 message: (error as Error).message,
             });
         }

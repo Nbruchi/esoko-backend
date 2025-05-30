@@ -36,7 +36,7 @@ export class EmailService {
         });
     }
 
-    async sendVerificationEmail(userId: string, token: string): Promise<void> {
+    async sendVerificationEmail(userId: string, otp: string): Promise<void> {
         try {
             const user = await prisma.user.findUnique({
                 where: { id: userId },
@@ -45,8 +45,6 @@ export class EmailService {
 
             if (!user) throw new Error("User not found");
 
-            const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
-
             const mailOptions = {
                 from: `"Esoko" <${process.env.SMTP_USER}>`,
                 to: user.email,
@@ -54,9 +52,9 @@ export class EmailService {
                 html: `
                     <h1>Welcome to Esoko!</h1>
                     <p>Hi ${user.firstName},</p>
-                    <p>Please verify your email address by clicking the link below:</p>
-                    <a href="${verificationUrl}">Verify Email</a>
-                    <p>This link will expire in 24 hours.</p>
+                    <p>Please use the following OTP to verify your email address:</p>
+                    <h2 style="font-size: 24px; letter-spacing: 5px; color: #4F46E5; text-align: center; padding: 10px; background: #F3F4F6; border-radius: 5px;">${otp}</h2>
+                    <p>This OTP will expire in 10 minutes.</p>
                     <p>If you didn't create an account, you can safely ignore this email.</p>
                 `,
             };
